@@ -35,3 +35,10 @@ The workflow checks out Hara Foundation revision
 a706cd91d82ddce3003d75a5d0edc9178c6cc6ef, verifies Hara Native 0.1.21, builds
 and installs Foundation into an isolated HARA_DIST_HOME, and starts PostgreSQL
 16 on port 55222 with the required extensions.
+
+
+## Initial merge order
+
+Merge the gwtrade-ci workflow change before merging the gwtrade source change.
+After both are merged, configure the App variable and secret, then the next
+push to gwtrade main will trigger CI through notify.
