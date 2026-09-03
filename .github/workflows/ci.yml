@@ -16,7 +16,8 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   HARA_FOUNDATION_VERSION: "0.1.16"
-  HARA_NATIVE_VERSION: "0.1.20"
+  HARA_FOUNDATION_REF: "a706cd91d82ddce3003d75a5d0edc9178c6cc6ef"
+  HARA_NATIVE_VERSION: "0.1.21"
 
 jobs:
   prepare:
@@ -55,9 +56,9 @@ jobs:
           {
             echo "### GWTrade source"
             echo ""
-            echo "- Repository: `greenways-ai/gwtrade`"
-            echo "- Revision: `$source_sha`"
-            echo "- Trigger ref: `$source_ref`"
+            echo "- Repository: greenways-ai/gwtrade"
+            echo "- Revision: $source_sha"
+            echo "- Trigger ref: $source_ref"
           } >> "$GITHUB_STEP_SUMMARY"
 
   test:
@@ -102,8 +103,13 @@ jobs:
           path: gwtrade
           fetch-depth: 1
 
-      - name: Install ORAS
-        uses: oras-project/setup-oras@v1
+      - name: Checkout pinned Hara Foundation source
+        uses: actions/checkout@v4
+        with:
+          repository: hara-lang/hara
+          ref: ${{ env.HARA_FOUNDATION_REF }}
+          path: hara-foundation
+          fetch-depth: 1
 
       - name: Download and verify Hara Native
         shell: bash
@@ -112,8 +118,8 @@ jobs:
           native_archive="hara-native-${HARA_NATIVE_VERSION}-linux-x86_64.tar.gz"
           native_base="https://github.com/hara-lang/hara-native/releases/download/v${HARA_NATIVE_VERSION}"
           mkdir -p "${RUNNER_TEMP}/hara-native"
-          curl --fail --silent --show-error --location --retry 3 "${native_base}/SHA256SUMS"             --output "${RUNNER_TEMP}/SHA256SUMS"
-          curl --fail --silent --show-error --location --retry 3 "${native_base}/${native_archive}"             --output "${RUNNER_TEMP}/${native_archive}"
+          curl --fail --silent --show-error --location --retry 3 "${native_base}/SHA256SUMS" --output "${RUNNER_TEMP}/SHA256SUMS"
+          curl --fail --silent --show-error --location --retry 3 "${native_base}/${native_archive}" --output "${RUNNER_TEMP}/${native_archive}"
           expected="$(awk -v name="${native_archive}" '$2 == name || $2 == ("*" name) { print $1 }' "${RUNNER_TEMP}/SHA256SUMS")"
           test -n "${expected}"
           actual="$(sha256sum "${RUNNER_TEMP}/${native_archive}" | cut -d ' ' -f 1)"
@@ -125,16 +131,14 @@ jobs:
           echo "HARA_NATIVE=${native_path}" >> "${GITHUB_ENV}"
           echo "HARA_NATIVE=${native_path}" >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Install verified Hara Foundation package
+      - name: Build and install verified Hara Foundation package
         shell: bash
         run: |
           set -euo pipefail
-          package_dir="${RUNNER_TEMP}/hara-foundation"
-          mkdir -p "${package_dir}" "${RUNNER_TEMP}/hara-dist"
-          oras pull "ghcr.io/hara-packages/hara-lang.hara:${HARA_FOUNDATION_VERSION}" --output "${package_dir}"
-          foundation_harp="$(find "${package_dir}" -type f -name '*.harp' -print -quit)"
-          test -n "${foundation_harp}"
+          mkdir -p "${RUNNER_TEMP}/hara-dist"
+          foundation_harp="${RUNNER_TEMP}/hara-foundation-${HARA_FOUNDATION_VERSION}.harp"
           export HARA_DIST_HOME="${RUNNER_TEMP}/hara-dist"
+          "${HARA_NATIVE}" bundle build "${GITHUB_WORKSPACE}/hara-foundation" --output "${foundation_harp}"
           "${HARA_NATIVE}" bundle verify "${foundation_harp}"
           "${HARA_NATIVE}" bundle install "${foundation_harp}"
           echo "HARA_DIST_HOME=${HARA_DIST_HOME}" >> "${GITHUB_ENV}"
@@ -143,7 +147,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker exec "${{ job.services.postgres.id }}"             psql -U postgres -d postgres -v ON_ERROR_STOP=1             -c 'CREATE EXTENSION IF NOT EXISTS citext;'             -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto;'             -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
+          docker exec "${{ job.services.postgres.id }}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS citext;' -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto;' -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
 
       - name: Run focused Hara tests
         working-directory: gwtrade
@@ -152,9 +156,9 @@ jobs:
           CI: "true"
         run: |
           set -euo pipefail
-          "${HARA_NATIVE}" test --project "${PWD}"             --file test-lang/gwdb/common/type_system_base_test.hal
-          "${HARA_NATIVE}" test --project "${PWD}"             --file test-lang/gwdb/common/type_system_seed_test.hal
-          "${HARA_NATIVE}" test --project "${PWD}"             --file test-lang/gwdb/test/postgres_test.hal
+          "${HARA_NATIVE}" test --project "${PWD}" --file test-lang/gwdb/common/type_system_base_test.hal
+          "${HARA_NATIVE}" test --project "${PWD}" --file test-lang/gwdb/common/type_system_seed_test.hal
+          "${HARA_NATIVE}" test --project "${PWD}" --file test-lang/gwdb/test/postgres_test.hal
 
       - name: Run complete Hara project suite
         working-directory: gwtrade
